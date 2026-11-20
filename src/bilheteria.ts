@@ -1,99 +1,62 @@
-import type { EventoInfo } from "./tipos.ts";
+import type { Comprovante, ConfigBilheteria, EventoInfo, Pedido } from "./tipos.ts";
+import type { Evento } from "./dominio.ts";
+import type { Pagamento } from "./pagamento.ts";
+import { DadosInvalidosErro, NaoEncontradoErro, PagamentoErro } from "./dominio.ts";
+import { calcularTotal, montarIngressos } from "./preco.ts";
+import { direitoAMeia } from "./regras.ts";
 
-export abstract class ErroDeNegocio extends Error {
-  readonly status: number;
+function comTempoLimite<T>(promessa: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<never>((_, rejeitar) => {
+    timer = setTimeout(() => rejeitar(new Error("tempo esgotado")), ms);
+  });
+  return Promise.race([promessa, limite]).finally(() => clearTimeout(timer));
+}
 
-  constructor(mensagem: string, status: number) {
-    super(mensagem);
-    this.name = new.target.name;
-    this.status = status;
+export class Bilheteria {
+  #eventos: Evento[];
+  #pagar: Pagamento;
+  #limitePagamentoMs: number;
+  #proximoReservaId = 1;
+
+  constructor(config: ConfigBilheteria) {
+    this.#eventos = config.eventos;
+    this.#pagar = config.pagar;
+    this.#limitePagamentoMs = config.limitePagamentoMs;
+  }
+
+  listarEventos(): EventoInfo[] {
+    return this.#eventos.map((evento) => evento.info());
+  }
+
+  async reservar(pedido: Pedido): Promise<Comprovante> {
+    if (!Array.isArray(pedido?.ingressos) || pedido.ingressos.length === 0) {
+      throw new DadosInvalidosErro("o pedido precisa ter ao menos um ingresso");
+    }
+
+    const evento = this.#eventos.find((e) => e.id === pedido.eventoId);
+    if (!evento) {
+      throw new NaoEncontradoErro(`o evento ${pedido.eventoId} não existe`);
+    }
+
+    const poltronas = pedido.ingressos.map((pessoa) => pessoa.poltrona);
+    evento.reservar(poltronas);
+
+    const ingressos = montarIngressos(evento.preco, pedido.ingressos, direitoAMeia);
+    const total = calcularTotal(ingressos);
+
+    try {
+      await comTempoLimite(this.#pagar(total), this.#limitePagamentoMs);
+    } catch {
+      evento.liberar(poltronas);
+      throw new PagamentoErro("o pagamento não foi aprovado");
+    }
+
+    const reservaId = this.#proximoReservaId++;
+    return { reservaId, eventoId: evento.id, ingressos, total };
   }
 }
 
-export class DadosInvalidosErro extends ErroDeNegocio {
-  constructor(mensagem: string) {
-    super(mensagem, 400);
-  }
-}
-
-export class NaoEncontradoErro extends ErroDeNegocio {
-  constructor(mensagem: string) {
-    super(mensagem, 404);
-  }
-}
-
-export class PoltronaOcupadaErro extends ErroDeNegocio {
-  constructor(mensagem: string) {
-    super(mensagem, 409);
-  }
-}
-
-export class PagamentoErro extends ErroDeNegocio {
-  constructor(mensagem: string) {
-    super(mensagem, 502);
-  }
-}
-
-export class Evento {
-  readonly id: number;
-  readonly nome: string;
-  readonly preco: number;
-  readonly capacidade: number;
-  #vendidas: number[] = [];
-
-  constructor(id: number, nome: string, preco: number, capacidade: number) {
-    this.id = id;
-    this.nome = nome;
-    this.preco = preco;
-    this.capacidade = capacidade;
-  }
-
-  get disponivel(): number {
-    return this.capacidade - this.#vendidas.length;
-  }
-
-  reservar(poltronas: number[]): void {
-    if (!Array.isArray(poltronas) || poltronas.length === 0) {
-      throw new DadosInvalidosErro("informe ao menos uma poltrona");
-    }
-
-    const invalida = poltronas.find((poltrona) => !this.#existe(poltrona));
-    if (invalida !== undefined) {
-      throw new DadosInvalidosErro(`a poltrona ${invalida} não existe neste evento`);
-    }
-
-    if (new Set(poltronas).size !== poltronas.length) {
-      throw new DadosInvalidosErro("a mesma poltrona aparece mais de uma vez no pedido");
-    }
-
-    const ocupada = poltronas.find((poltrona) => this.#vendidas.includes(poltrona));
-    if (ocupada !== undefined) {
-      throw new PoltronaOcupadaErro(`a poltrona ${ocupada} já foi vendida`);
-    }
-
-    this.#vendidas = [...this.#vendidas, ...poltronas];
-  }
-
-  liberar(poltronas: number[]): void {
-    const naoVendida = poltronas.find((poltrona) => !this.#vendidas.includes(poltrona));
-    if (naoVendida !== undefined) {
-      throw new DadosInvalidosErro(`a poltrona ${naoVendida} não estava vendida`);
-    }
-
-    this.#vendidas = this.#vendidas.filter((poltrona) => !poltronas.includes(poltrona));
-  }
-
-  info(): EventoInfo {
-    return {
-      id: this.id,
-      nome: this.nome,
-      preco: this.preco,
-      capacidade: this.capacidade,
-      disponivel: this.disponivel,
-    };
-  }
-
-  #existe(poltrona: number): boolean {
-    return Number.isInteger(poltrona) && poltrona >= 1 && poltrona <= this.capacidade;
-  }
+export function criarBilheteria(config: ConfigBilheteria): Bilheteria {
+  return new Bilheteria(config);
 }
