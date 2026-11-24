@@ -39,7 +39,7 @@ export class Evento {
   readonly nome: string;
   readonly preco: number;
   readonly capacidade: number;
-  #vendidas: number[] = [];
+  #vendidas = new Set<number>();
 
   constructor(id: number, nome: string, preco: number, capacidade: number) {
     this.id = id;
@@ -49,7 +49,7 @@ export class Evento {
   }
 
   get disponivel(): number {
-    return this.capacidade - this.#vendidas.length;
+    return this.capacidade - this.#vendidas.size;
   }
 
   reservar(poltronas: number[]): void {
@@ -66,21 +66,21 @@ export class Evento {
       throw new DadosInvalidosErro("a mesma poltrona aparece mais de uma vez no pedido");
     }
 
-    const ocupada = poltronas.find((poltrona) => this.#vendidas.includes(poltrona));
+    const ocupada = poltronas.find((poltrona) => this.#vendidas.has(poltrona));
     if (ocupada !== undefined) {
       throw new PoltronaOcupadaErro(`a poltrona ${ocupada} já foi vendida`);
     }
 
-    this.#vendidas = [...this.#vendidas, ...poltronas];
+    for (const poltrona of poltronas) this.#vendidas.add(poltrona);
   }
 
   liberar(poltronas: number[]): void {
-    const naoVendida = poltronas.find((poltrona) => !this.#vendidas.includes(poltrona));
+    const naoVendida = poltronas.find((poltrona) => !this.#vendidas.has(poltrona));
     if (naoVendida !== undefined) {
       throw new DadosInvalidosErro(`a poltrona ${naoVendida} não estava vendida`);
     }
 
-    this.#vendidas = this.#vendidas.filter((poltrona) => !poltronas.includes(poltrona));
+    for (const poltrona of poltronas) this.#vendidas.delete(poltrona);
   }
 
   info(): EventoInfo {

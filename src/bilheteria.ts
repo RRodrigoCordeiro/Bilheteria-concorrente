@@ -1,7 +1,6 @@
 import type { Comprovante, ConfigBilheteria, EventoInfo, Pedido } from "./tipos.ts";
-import type { Evento } from "./dominio.ts";
 import type { Pagamento } from "./pagamento.ts";
-import { DadosInvalidosErro, NaoEncontradoErro, PagamentoErro } from "./dominio.ts";
+import { DadosInvalidosErro, NaoEncontradoErro, PagamentoErro, type Evento } from "./dominio.ts";
 import { calcularTotal, montarIngressos } from "./preco.ts";
 import { direitoAMeia } from "./regras.ts";
 
