@@ -42,6 +42,16 @@ export class Evento {
   #vendidas = new Set<number>();
 
   constructor(id: number, nome: string, preco: number, capacidade: number) {
+    if (typeof nome !== "string" || nome.trim() === "") {
+      throw new DadosInvalidosErro("o evento precisa de um nome");
+    }
+    if (typeof preco !== "number" || !Number.isFinite(preco) || preco < 0) {
+      throw new DadosInvalidosErro("o preço do evento precisa ser um número maior ou igual a zero");
+    }
+    if (!Number.isInteger(capacidade) || capacidade < 1) {
+      throw new DadosInvalidosErro("a capacidade do evento precisa ser um inteiro a partir de 1");
+    }
+
     this.id = id;
     this.nome = nome;
     this.preco = preco;
