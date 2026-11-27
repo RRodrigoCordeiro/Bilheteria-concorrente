@@ -1,25 +1,9 @@
-import type { Comprovante, ConfigBilheteria, EventoInfo, Pedido, Pessoa } from "./tipos.ts";
+import type { Comprovante, ConfigBilheteria, EventoInfo, Pedido } from "./tipos.ts";
+import type { Evento } from "./dominio.ts";
 import type { Pagamento } from "./pagamento.ts";
-import { DadosInvalidosErro, NaoEncontradoErro, PagamentoErro, type Evento } from "./dominio.ts";
+import { DadosInvalidosErro, NaoEncontradoErro, PagamentoErro } from "./dominio.ts";
 import { calcularTotal, montarIngressos } from "./preco.ts";
 import { direitoAMeia } from "./regras.ts";
-
-function validarPessoa(pessoa: unknown): asserts pessoa is Pessoa {
-  if (pessoa === null || typeof pessoa !== "object" || Array.isArray(pessoa)) {
-    throw new DadosInvalidosErro("cada ingresso precisa ser uma pessoa");
-  }
-
-  const candidata = pessoa as Pessoa;
-  if (typeof candidata.nome !== "string" || candidata.nome.trim() === "") {
-    throw new DadosInvalidosErro("cada ingresso precisa de um nome");
-  }
-  if (!Number.isInteger(candidata.idade) || candidata.idade < 0) {
-    throw new DadosInvalidosErro("a idade precisa ser um inteiro maior ou igual a zero");
-  }
-  if (typeof candidata.estudante !== "boolean" || typeof candidata.pcd !== "boolean") {
-    throw new DadosInvalidosErro("estudante e pcd precisam ser verdadeiro ou falso");
-  }
-}
 
 function comTempoLimite<T>(promessa: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -49,8 +33,6 @@ export class Bilheteria {
     if (!Array.isArray(pedido?.ingressos) || pedido.ingressos.length === 0) {
       throw new DadosInvalidosErro("o pedido precisa ter ao menos um ingresso");
     }
-
-    for (const pessoa of pedido.ingressos) validarPessoa(pessoa);
 
     const evento = this.#eventos.find((e) => e.id === pedido.eventoId);
     if (!evento) {

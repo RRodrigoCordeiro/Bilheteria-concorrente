@@ -39,19 +39,9 @@ export class Evento {
   readonly nome: string;
   readonly preco: number;
   readonly capacidade: number;
-  #vendidas = new Set<number>();
+  #vendidas: number[] = [];
 
   constructor(id: number, nome: string, preco: number, capacidade: number) {
-    if (typeof nome !== "string" || nome.trim() === "") {
-      throw new DadosInvalidosErro("o evento precisa de um nome");
-    }
-    if (typeof preco !== "number" || !Number.isFinite(preco) || preco < 0) {
-      throw new DadosInvalidosErro("o preço do evento precisa ser um número maior ou igual a zero");
-    }
-    if (!Number.isInteger(capacidade) || capacidade < 1) {
-      throw new DadosInvalidosErro("a capacidade do evento precisa ser um inteiro a partir de 1");
-    }
-
     this.id = id;
     this.nome = nome;
     this.preco = preco;
@@ -59,7 +49,7 @@ export class Evento {
   }
 
   get disponivel(): number {
-    return this.capacidade - this.#vendidas.size;
+    return this.capacidade - this.#vendidas.length;
   }
 
   reservar(poltronas: number[]): void {
@@ -76,21 +66,21 @@ export class Evento {
       throw new DadosInvalidosErro("a mesma poltrona aparece mais de uma vez no pedido");
     }
 
-    const ocupada = poltronas.find((poltrona) => this.#vendidas.has(poltrona));
+    const ocupada = poltronas.find((poltrona) => this.#vendidas.includes(poltrona));
     if (ocupada !== undefined) {
       throw new PoltronaOcupadaErro(`a poltrona ${ocupada} já foi vendida`);
     }
 
-    for (const poltrona of poltronas) this.#vendidas.add(poltrona);
+    this.#vendidas = [...this.#vendidas, ...poltronas];
   }
 
   liberar(poltronas: number[]): void {
-    const naoVendida = poltronas.find((poltrona) => !this.#vendidas.has(poltrona));
+    const naoVendida = poltronas.find((poltrona) => !this.#vendidas.includes(poltrona));
     if (naoVendida !== undefined) {
       throw new DadosInvalidosErro(`a poltrona ${naoVendida} não estava vendida`);
     }
 
-    for (const poltrona of poltronas) this.#vendidas.delete(poltrona);
+    this.#vendidas = this.#vendidas.filter((poltrona) => !poltronas.includes(poltrona));
   }
 
   info(): EventoInfo {
