@@ -1,157 +1,71 @@
 # Bilheteria concorrente
 
-Serviço HTTP que vende ingressos de vários eventos ao mesmo tempo. Dois pedidos não ficam com a mesma poltrona: a cadeira é reservada antes do pagamento e, se a cobrança falha ou passa do tempo, ela volta para a venda.
+Projeto final de Paradigmas de Linguagens de Programação. Enunciado completo no Blackboard.
 
-Projeto final de Paradigmas de Linguagens de Programação. O passo a passo original da disciplina está no `GUIA.md`.
+Os arquivos de `src/` que vocês escrevem já existem, vazios; o `tipos.ts` e o `servidor.ts` vêm prontos. O que vai em cada um está no passo
+indicado do enunciado:
 
-## Requisitos
+| Arquivo | Passo do enunciado |
+| :--- | :--- |
+| `src/tipos.ts` (pronto) | 1: os tipos |
+| `src/regras.ts` | 2: meia-entrada |
+| `src/preco.ts` | 3: preço (funcional) |
+| `src/dominio.ts` | 4: evento e erros (orientado a objetos) |
+| `src/bilheteria.ts` | 5: a venda, onde a concorrência aparece |
+| `src/servidor.ts` (pronto) e `src/main.ts` | 6: ligar o servidor |
 
-- Node.js 22 ou mais novo (`node -v`)
-- npm
+Não alterem `src/pagamento.ts`, `src/servidor.ts`, `src/bench.ts` nem `testes/`: a correção usa os originais.
 
-## Comandos
+Para começar, sigam o `GUIA.md`. Depois dele, os comandos são:
 
 ```bash
 npm install
-npm test            # correção automática: 16 pontos
-npm run typecheck   # confere os tipos sem gerar arquivo
-npm start           # serviço em http://localhost:3000
-npm run bench       # em outro terminal, com o serviço no ar
+npm test          # correção automática: mostra os pontos
+npm start         # serviço em http://localhost:3000
+npm run bench     # com o serviço no ar: 200 pedidos simultâneos no evento 1, dois por poltrona
 ```
 
-O bench dispara 200 pedidos ao mesmo tempo no evento 1. Dá para mudar a quantidade e o evento:
+Exemplo de pedido:
 
 ```bash
-npm run bench -- 500 2
+curl -X POST localhost:3000/reservas -H 'Content-Type: application/json' \
+  -d '{"eventoId":1,"ingressos":[{"nome":"Ana","idade":20,"estudante":true,"pcd":false,"poltrona":7}]}'
 ```
 
-O primeiro número é a quantidade de pedidos e o segundo é o `eventoId`. A URL padrão é `http://localhost:3000`. Para apontar para outro endereço: `URL=http://localhost:3000 npm run bench` no bash, ou `$env:URL="http://localhost:3000"; npm run bench` no PowerShell.
-
-Cada pedido do bench escolhe a poltrona `(i % capacidade) + 1`. Com mais pedidos do que cadeiras, várias pessoas disputam a mesma poltrona. O evento 1 enche: para rodar de novo, pare o `npm start` com Ctrl+C e suba outra vez.
-
-## Eventos
-
-O `src/main.ts` sobe três eventos:
-
-| id | Nome | Preço | Cadeiras |
-| ---: | :--- | ---: | ---: |
-| 1 | Show de Abertura | 150 | 100 |
-| 2 | Peça de Teatro | 80 | 50 |
-| 3 | Stand-up Comedy | 60 | 30 |
-
-A operadora de pagamento é falsa, para o projeto rodar sem internet. Cada cobrança demora 80 ms e falha em cerca de 10% das vezes. A bilheteria espera no máximo 500 ms. Se passar disso, a venda é cancelada e as poltronas voltam.
-
-## Regras de negócio
-
-- Uma pessoa tem meia-entrada se for estudante, pessoa com deficiência ou tiver 60 anos ou mais. A meia é a metade do preço do evento, arredondada para centavos.
-- Quem não tem direito paga a inteira.
-- O total do pedido é a soma dos ingressos mais 10% de taxa de serviço, também arredondada para centavos.
-- As poltronas vão de 1 até a capacidade do evento. Poltrona 0, poltrona acima da capacidade, número quebrado, lista vazia ou a mesma cadeira duas vezes no pedido são recusados.
-- Um pedido reserva todas as cadeiras ou nenhuma. Se uma já foi vendida, as outras do mesmo pedido não ficam marcadas.
-- O evento só é criado com nome preenchido, preço finito maior ou igual a zero e capacidade inteira a partir de 1.
-
-Exemplo: Ana, estudante, no Show de Abertura (R$ 150). A meia vale R$ 75 e o total com a taxa fica R$ 82,50.
-
-## API
-
-### `GET /eventos`
-
-Lista os eventos com as cadeiras ainda livres.
-
-```bash
-curl http://localhost:3000/eventos
-```
-
-```json
-[
-  { "id": 1, "nome": "Show de Abertura", "preco": 150, "capacidade": 100, "disponivel": 100 }
-]
-```
-
-### `POST /reservas`
-
-Compra um ou mais ingressos do mesmo evento, um por pessoa.
-
-```bash
-curl -X POST http://localhost:3000/reservas -H "Content-Type: application/json" \
-  -d "{\"eventoId\":1,\"ingressos\":[{\"nome\":\"Ana\",\"idade\":20,\"estudante\":true,\"pcd\":false,\"poltrona\":7}]}"
-```
-
-Resposta `201`:
-
-```json
-{
-  "reservaId": 1,
-  "eventoId": 1,
-  "ingressos": [
-    { "nome": "Ana", "poltrona": 7, "tipo": "meia", "valor": 75 }
-  ],
-  "total": 82.5
-}
-```
-
-O cabeçalho `Content-Type: application/json` é obrigatório. Sem ele o Express não lê o corpo.
-
-### Erros
-
-| Status | Quando |
-| ---: | :--- |
-| 400 | JSON inválido, pedido vazio, poltrona inexistente ou repetida no pedido |
-| 404 | `eventoId` que não existe |
-| 409 | Poltrona já vendida |
-| 502 | Pagamento recusado ou tempo esgotado. As poltronas desse pedido voltam |
-| 500 | Qualquer outro erro |
-
-O corpo do erro é `{ "mensagem": "..." }`.
-
-## Como a venda funciona
-
-1. A bilheteria recusa pedido sem ingressos e evento que não existe.
-2. O `Evento` marca as poltronas **antes** de qualquer `await`. No Node o JavaScript roda numa linha só, então essa parte termina inteira antes de outro pedido continuar. Duas pessoas não passam juntas pela checagem da mesma cadeira.
-3. O preço é calculado em `preco.ts`, com a regra de meia de `regras.ts`.
-4. Só então a operadora é chamada, com tempo limite.
-5. Se a cobrança falha ou demora demais, `liberar` devolve as poltronas e a resposta é 502.
-6. Se passa, a bilheteria devolve o comprovante com um `reservaId` novo.
-
-O `await` perigoso seria esperar o pagamento antes de reservar. Os dois pedidos veriam a cadeira livre, os dois pagariam e os dois receberiam a mesma poltrona.
-
-## Organização do código
-
-| Arquivo | Papel |
-| :--- | :--- |
-| `src/tipos.ts` | Tipos do pedido, do ingresso, do comprovante e da configuração |
-| `src/regras.ts` | Quem tem direito à meia-entrada |
-| `src/preco.ts` | Preço puro: meia, taxa e total, sem servidor e sem estado |
-| `src/dominio.ts` | `Evento` e a hierarquia de erros de negócio |
-| `src/bilheteria.ts` | A venda: reserva, preço, pagamento e liberação |
-| `src/pagamento.ts` | Operadora falsa. A correção usa o original |
-| `src/servidor.ts` | Rotas HTTP. A correção usa o original |
-| `src/main.ts` | Sobe os três eventos e escuta a porta 3000 |
-| `src/bench.ts` | Abertura de vendas com muitos pedidos ao mesmo tempo |
-| `testes/projeto.ts` | Correção automática |
-
-Não alterem `src/pagamento.ts`, `src/servidor.ts`, `src/bench.ts` nem `testes/`. A correção compara com os arquivos originais.
-
-`preco.ts` não usa laço, `let`, `var` nem mutação. `valorDoIngresso` e `aplicarTaxa` devolvem funções. Dá para testar o preço importando o módulo, sem subir o servidor: o `npm test` já faz isso.
-
-O `Evento` esconde o conjunto de poltronas vendidas. Quem está fora só vê `disponivel` e `info()`, e só muda o estado por `reservar` e `liberar`. Os erros (`DadosInvalidosErro`, `NaoEncontradoErro`, `PoltronaOcupadaErro`, `PagamentoErro`) herdam de `ErroDeNegocio` e cada um carrega o status HTTP. O servidor trata a hierarquia inteira num lugar só.
-
-Se o `Evento` fosse funcional, cada reserva devolveria um evento novo em vez de alterar o atual. Isso deixa o histórico fácil de guardar, mas a venda concorrente ficaria pior: dois pedidos leriam o mesmo evento, cada um devolveria a sua cópia e um apagaria a venda do outro. A classe, com o conjunto escondido e a reserva síncrona, evita esse desencontro. Num programa de verdade com vários núcleos, a mesma ideia precisaria de um bloqueio em volta de `reservar` e `liberar`, porque duas linhas de execução poderiam ler o conjunto ao mesmo tempo.
+---
 
 ## Preencham (avaliado no vídeo)
 
-**Link do vídeo:**
+**Link do vídeo:** 
 
 ### Integrantes
 
 | Nome | Usuário do GitHub | Parte principal |
 | :--- | :--- | :--- |
-| | | |
+| Rodrigo Cordeiro | RRodrigoCordeiro | Meia-entrada, preço, `Evento` e a venda concorrente |
+| Gabriel Clemente | GabrielClemente05 | Validações do `Evento` e poltronas vendidas em `Set` |
+| Paulo Mendez | Paulomdz | Servidor em `main.ts` |
+| Duan Oliveira | duanoliveira | Preenchimento do `README.md` e ajustes na venda concorrente em `bilheteria.ts` |
+
+### Decisões
+
+1. **Concorrência.** Duas pessoas não ficam com a mesma poltrona porque `evento.reservar(poltronas)` roda antes do `await` e não espera nada no meio. No Node, um trecho sem `await` não é interrompido: a função confere se a poltrona existe, se não está repetida e se não foi vendida, e só então grava as vendidas. O `await` perigoso é o do pagamento, em `await comTempoLimite(this.#pagar(total), this.#limitePagamentoMs)`. Se ele ficasse entre a pergunta "está livre?" e a marcação, o outro pedido entraria nesse intervalo e os dois comprariam o mesmo lugar. Se a operadora recusar ou estourar o tempo, `evento.liberar(poltronas)` devolve as poltronas e a venda lança `PagamentoErro`.
+
+2. **OO.** O `Evento` esconde a lista de poltronas vendidas. Quem está fora só lê `disponivel` e `info()`. Atribuir `evento.disponivel = 999` não muda as poltronas, porque `disponivel` é um `get` sem `set`. O `reservar` é tudo ou nada porque ele confere a lista inteira antes de gravar: lista vazia, poltrona fora de 1 até a capacidade, poltrona repetida ou já vendida lançam erro e nenhuma poltrona daquele pedido é marcada. Os erros são uma hierarquia porque todos herdam de `ErroDeNegocio`, que guarda o `status` HTTP. Cada filha só passa a mensagem e o status fixo (400, 404, 409 ou 502). O servidor trata qualquer um com `instanceof ErroDeNegocio` e responde com `erro.status`.
+
+3. **Funcional.** O `preco.ts` é puro: recebe dados, devolve um resultado novo e não altera a lista de entrada. `valorDoIngresso(100)` devolve uma função que, para `"inteira"`, retorna 100 e, para `"meia"`, retorna 50. `aplicarTaxa(0.1)` devolve uma função que soma 10%. `montarIngressos` usa `map` e `calcularTotal` usa `reduce`. Dá para testar sem servidor chamando as funções direto: Ana estudante na poltrona 4 e Beto na 5, com preço 100, viram meia de 50 e inteira de 100; `calcularTotal` desses dois ingressos dá 165.
+
+4. **Se fosse em outro paradigma.** No `preco.ts`, em orientação a objetos o preço viraria método de um objeto `Ingresso` que guarda e altera o próprio valor. O cálculo deixaria de ser uma função que só devolve um número, e o teste teria que criar o objeto e cuidar para ele não mudar a entrada. Para essa parte ficaria pior: o preço não precisa de estado, e a função pura se testa com uma chamada.
+
+5. **Concorrente × paralelo.** Os pedidos são concorrentes porque o Node executa o JavaScript numa linha só e um pedido só solta a vez no `await` do pagamento. Em vários núcleos ao mesmo tempo, duas execuções poderiam passar juntas pela conferência "a poltrona está livre?" e as duas gravariam a mesma poltrona. A marcação síncrona deixaria de bastar, e o `reservar` do `Evento` precisaria de uma trava de verdade em volta da conferência e da gravação.
 
 ### Resultados do bench
 
 | Cenário | Pedidos | Tempo (ms) | Vendidos | Poltrona ocupada | Falha de pagamento |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| Padrão (`main.ts`) | 200 | | | | |
+| Padrão (`main.ts`) | 200 | 207 | 86 | 100 | 14 |
 
-O que os números mostram:
+O bench ocupa as poltronas do evento 1: para rodar de novo, parem o `npm start` (Ctrl+C) e subam outra
+vez.
+
+O que os números mostram: o bench mandou 200 pedidos ao mesmo tempo para o evento 1, que tem 100 poltronas, dois pedidos por poltrona. Cem pessoas perderam a disputa e receberam 409, sem serem cobradas. As outras 100 ficaram com a poltrona e foram até a operadora: 86 pagaram (201) e 14 tiveram a cobrança recusada (502), perto dos 10% de `taxaDeFalha`. Essas 14 poltronas voltaram para a venda, por isso `disponivel` ficou 14. A conta fecha: 86 + 100 + 14 = 200.
